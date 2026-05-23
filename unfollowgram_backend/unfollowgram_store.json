@@ -1,0 +1,14 @@
+{
+  "orders": {},
+  "codes": [
+    {
+      "code": "TY78-ESNS",
+      "plan": "starter",
+      "status": "active",
+      "createdAt": "2026-05-23T01:16:23.742Z",
+      "externalReference": "DIRECT-STARTER-MPHNQZI6",
+      "paymentId": null,
+      "usesAllowed": 1
+    }
+  ]
+}
