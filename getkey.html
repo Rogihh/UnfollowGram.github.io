@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UnfollowGram | Resgatar Key</title>
+<style>
+  :root{
+    --bg:#0b0b12;--card:#151524;--line:#ffffff1a;--text:#f4f5ff;--muted:#a7abc9;
+    --ok:#22c55e;--warn:#f59e0b;--err:#ef4444;--accent:#8b5cf6;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:22px;background:radial-gradient(circle at top,#8b5cf633 0%,transparent 40%),var(--bg);font-family:Inter,Segoe UI,Arial,sans-serif;color:var(--text)}
+  .card{width:100%;max-width:620px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:24px}
+  h1{margin:0 0 8px;font-size:28px}
+  .sub{margin:0 0 16px;color:var(--muted);font-size:14px;line-height:1.6}
+  .status{display:none;margin:0 0 14px;padding:12px 14px;border-radius:10px;font-size:14px;line-height:1.5}
+  .status.show{display:block}
+  .ok{background:#22c55e1c;border:1px solid #22c55e55;color:#86efac}
+  .pending{background:#f59e0b1b;border:1px solid #f59e0b55;color:#fcd34d}
+  .fail{background:#ef44441a;border:1px solid #ef444455;color:#fda4af}
+  .box{background:#0f1020;border:1px solid var(--line);border-radius:10px;padding:14px;margin:0 0 14px}
+  .k{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px}
+  .v{font-size:16px;font-weight:700;word-break:break-word}
+  .code{font-family:Consolas,Monaco,monospace;font-size:24px;letter-spacing:2px}
+  .row{display:flex;gap:10px;flex-wrap:wrap}
+  .btn{border:1px solid var(--line);background:#1f2034;color:var(--text);border-radius:9px;padding:11px 15px;font-size:14px;font-weight:700;cursor:pointer;text-decoration:none}
+  .btn:hover{opacity:.92}
+  .btn-main{background:linear-gradient(135deg,#7c3aed,#a855f7);border:none}
+  .foot{margin-top:10px;color:var(--muted);font-size:12px}
+</style>
+</head>
+<body>
+  <main class="card">
+    <h1>Resgate da Key</h1>
+    <p class="sub">Assim que o pagamento for aprovado, sua key é registrada automaticamente na plataforma e liberada para login.</p>
+
+    <div id="status" class="status pending">Validando pagamento...</div>
+
+    <div class="box">
+      <div class="k">Referência</div>
+      <div class="v" id="refVal">—</div>
+    </div>
+
+    <div class="box">
+      <div class="k">Sua key</div>
+      <div class="v code" id="codeVal">—</div>
+    </div>
+
+    <div class="row">
+      <a id="goLogin" class="btn btn-main" href="unfollowgram_v9.html?screen=login">Ir ao login</a>
+      <button id="retryBtn" class="btn" type="button">Tentar novamente</button>
+      <button id="copyBtn" class="btn" type="button">Copiar key</button>
+    </div>
+
+    <p class="foot">UnfollowGram é uma ferramenta independente. Não somos afiliados, patrocinados ou endossados pelo Instagram ou pela Meta.</p>
+  </main>
+
+<script>
+'use strict';
+
+const params = new URLSearchParams(window.location.search);
+const API_BASE = window.location.protocol === 'file:' ? 'http://127.0.0.1:3000' : '';
+const ref = params.get('checkout_ref') || params.get('external_reference') || params.get('ref') || '';
+const claim = params.get('claim') || params.get('token') || '';
+const payStatus = params.get('pay_status') || params.get('status') || params.get('collection_status') || '';
+const paymentId = params.get('payment_id') || params.get('collection_id') || params.get('id') || '';
+const plan = (params.get('plan') || '').toLowerCase();
+
+const statusEl = document.getElementById('status');
+const refEl = document.getElementById('refVal');
+const codeEl = document.getElementById('codeVal');
+const goLogin = document.getElementById('goLogin');
+const retryBtn = document.getElementById('retryBtn');
+const copyBtn = document.getElementById('copyBtn');
+
+if (ref) refEl.textContent = ref;
+
+function showStatus(type, text) {
+  statusEl.className = `status show ${type}`;
+  statusEl.textContent = text;
+}
+
+function normalizePlan(p) {
+  if (p === 'starter' || p === 'pro' || p === 'vip') return p;
+  return 'starter';
+}
+
+function buildLocalCode(code, planKey) {
+  const p = normalizePlan(planKey);
+  const maxUses = p === 'starter' ? 1 : (p === 'pro' ? 3 : 999999);
+  const expiresAt = p === 'vip' ? 'Vitalício' : null;
+  return {
+    code,
+    plan: p,
+    note: 'Checkout automático',
+    status: 'active',
+    createdAt: new Date().toLocaleDateString('pt-BR'),
+    expiresAt,
+    totalUses: 0,
+    maxUses,
+    boundIp: null,
+    lastUsedAt: null,
+  };
+}
+
+function registerCodeOnPlatform(code, planKey) {
+  const key = 'ufg_codes';
+  let list = [];
+  try { list = JSON.parse(localStorage.getItem(key) || '[]'); } catch {}
+  if (!Array.isArray(list)) list = [];
+  const idx = list.findIndex((x) => x && x.code === code);
+  if (idx === -1) list.push(buildLocalCode(code, planKey));
+  localStorage.setItem(key, JSON.stringify(list));
+  localStorage.setItem('ufg_prefill_code', code);
+}
+
+async function claimKey() {
+  if ((!ref || !claim) && !plan) {
+    showStatus('fail', 'Link inválido. Informe ao menos o plano.');
+    return;
+  }
+
+  if (!ref || !claim) {
+    showStatus('pending', 'Gerando key automática do plano...');
+    try {
+      const dr = await fetch(`${API_BASE}/api/getkey/direct?plan=${encodeURIComponent(plan)}`);
+      const dd = await dr.json().catch(() => ({}));
+      if (!dr.ok) throw new Error(dd.error || 'Falha ao gerar key');
+      if (dd && dd.code) {
+        registerCodeOnPlatform(dd.code, plan || 'starter');
+        codeEl.textContent = dd.code;
+        goLogin.href = `unfollowgram_v9.html?screen=login&code=${encodeURIComponent(dd.code)}`;
+        showStatus('ok', 'Key gerada, cadastrada e pronta para login.');
+        return;
+      }
+      throw new Error('Resposta sem key');
+    } catch (e) {
+      showStatus('fail', e && e.message ? e.message : 'Erro ao gerar key.');
+      return;
+    }
+  }
+
+  showStatus('pending', 'Validando pagamento e liberando sua key...');
+  const q = new URLSearchParams({ checkout_ref: ref, claim });
+  if (payStatus) q.set('pay_status', payStatus);
+  if (paymentId) q.set('payment_id', paymentId);
+
+  try {
+    const res = await fetch(`${API_BASE}/api/checkout/claim?${q.toString()}`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Falha ao validar pagamento');
+
+    const status = String(data.status || '').toLowerCase();
+    const code = data.code || '';
+    if (status === 'approved' && code) {
+      registerCodeOnPlatform(code, plan || 'starter');
+      codeEl.textContent = code;
+      goLogin.href = `unfollowgram_v9.html?screen=login&code=${encodeURIComponent(code)}`;
+      showStatus('ok', 'Pagamento aprovado. Key liberada e cadastrada na plataforma.');
+      return;
+    }
+    if (status === 'pending') {
+      showStatus('pending', 'Pagamento em análise. Clique em "Tentar novamente" em alguns segundos.');
+      return;
+    }
+    showStatus('fail', 'Pagamento não aprovado. Se já pagou, contate o suporte.');
+  } catch (err) {
+    showStatus('fail', err && err.message ? err.message : 'Erro ao validar pagamento.');
+  }
+}
+
+retryBtn.addEventListener('click', claimKey);
+copyBtn.addEventListener('click', async () => {
+  const code = (codeEl.textContent || '').trim();
+  if (!code || code === '—') return;
+  try {
+    await navigator.clipboard.writeText(code);
+    showStatus('ok', 'Key copiada.');
+  } catch {
+    showStatus('fail', 'Não foi possível copiar agora.');
+  }
+});
+
+claimKey();
+</script>
+</body>
+</html>
